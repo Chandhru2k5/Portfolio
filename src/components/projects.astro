@@ -44,6 +44,10 @@ const projects: Project[] = [
     tags: ["Flask", "MongoDB", "GeoJSON 2dsphere", "FAISS", "LangChain", "JavaScript"],
   },
 ];
+
+const baseUrl = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 ---
 
 <section
@@ -70,7 +74,7 @@ const projects: Project[] = [
                 <img
                   src={
                     project.image.startsWith("/")
-                      ? `${import.meta.env.BASE_URL}${project.image.slice(1)}`
+                      ? `${baseUrl}${project.image.slice(1)}`
                       : project.image
                   }
                   alt={project.title}
