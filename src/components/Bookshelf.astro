@@ -1,0 +1,82 @@
+---
+const books = [
+  { title: "The Alchemist", author: ["Paulo", "Coelho"], color: "#b75d45", accent: "#f2c8a8", rotation: "0deg" },
+  { title: "Atomic Habits", author: ["James", "Clear"], color: "#d7c48b", accent: "#4e4635", rotation: "8deg", supportGap: "-18px", mobileSupportGap: "-3px", shelfLift: "6px", mobileShelfLift: "2px" },
+  { title: "The Kite Runner", author: ["Khaled", "Hosseini"], color: "#41647d", accent: "#d4e6e9", rotation: "0deg", supportShift: "52px", mobileSupportShift: "26px" },
+];
+---
+
+<section id="bookshelf" class="w-full py-16 border-t border-[#ffffff10] text-[var(--white)]">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6">
+    <div class="flex flex-col sm:flex-row sm:items-end justify-between pb-6 border-b border-[#ffffff10] gap-3">
+      <div>
+        <h2 class="text-lg text-[var(--sec)] mb-1 shiny-sec">A little inspiration</h2>
+        <h3 class="text-4xl md:text-5xl font-medium tracking-tight">Bookshelf</h3>
+      </div>
+      <p class="text-sm text-[var(--white-icon)] max-w-sm">A few reads that have shaped how I think and build.</p>
+    </div>
+
+    <div class="shelf-wrap pt-12 pb-5" aria-label="A shelf of favorite books">
+      <ul class="book-row" role="list">
+        {books.map((book, index) => (
+          <li class="book-slot" style={`--book-color:${book.color};--book-accent:${book.accent};--book-rotation:${book.rotation};--book-order:${index};--support-gap:${book.supportGap ?? "0px"};--mobile-support-gap:${book.mobileSupportGap ?? "0px"};--support-shift:${book.supportShift ?? "0px"};--mobile-support-shift:${book.mobileSupportShift ?? "0px"};--shelf-lift:${book.shelfLift ?? "0px"};--mobile-shelf-lift:${book.mobileShelfLift ?? "0px"}`}>
+            <article class="book" aria-label={`${book.title} by ${book.author.join(" ")}`}>
+              <span class="book-top" aria-hidden="true"></span>
+              <span class="book-bottom" aria-hidden="true"></span>
+              <span class="book-title">{book.title}</span>
+              <span class="book-author">{book.author[0]}<br />{book.author[1]}</span>
+            </article>
+          </li>
+        ))}
+      </ul>
+      <div class="shelf-board" aria-hidden="true"></div>
+      <p class="text-xs text-[var(--white-icon)] mt-6 text-center">Hover over a book to take a closer look</p>
+    </div>
+  </div>
+</section>
+
+<style>
+  .book-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 0;
+    min-height: 270px;
+    padding: 0 1.25rem;
+    list-style: none;
+  }
+  .book-slot { position: relative; z-index: var(--book-order); margin-left: var(--support-shift); margin-right: var(--support-gap); transform: translateY(calc(0px - var(--shelf-lift))) rotate(var(--book-rotation)); transform-origin: bottom center; transition: transform 220ms ease; }
+  .book-slot:hover { z-index: 20; transform: translateY(-12px) rotate(0deg); }
+  .book {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    width: clamp(58px, 8vw, 82px);
+    height: clamp(205px, 27vw, 258px);
+    padding: 1rem 0.65rem 0.8rem 0.8rem;
+    overflow: hidden;
+    color: var(--book-accent);
+    text-align: center;
+    background: linear-gradient(90deg, rgb(0 0 0 / 28%), transparent 15%, transparent 87%, rgb(255 255 255 / 12%)), var(--book-color);
+    border: 1px solid rgb(255 255 255 / 17%);
+    border-radius: 3px 7px 7px 3px;
+    box-shadow: inset 5px 0 7px rgb(0 0 0 / 18%), 5px 8px 15px rgb(0 0 0 / 28%);
+    transition: box-shadow 220ms ease;
+  }
+  .book-slot:hover .book { box-shadow: inset 5px 0 7px rgb(0 0 0 / 18%), 9px 15px 24px rgb(0 0 0 / 40%); }
+  .book-top { position: absolute; inset: 7px 7px auto; height: 1px; background: rgb(255 255 255 / 35%); }
+  .book-title { position: absolute; top: 44%; left: 50%; width: 170px; color: inherit; font-size: clamp(0.88rem, 1.35vw, 1.08rem); font-weight: 700; line-height: 1.2; letter-spacing: 0.015em; text-align: center; text-wrap: balance; white-space: normal; transform: translate(-50%, -50%) rotate(-90deg); }
+  .book-author { position: absolute; right: 0.2rem; bottom: 1.65rem; left: 0.2rem; font-size: clamp(0.65rem, 1vw, 0.8rem); line-height: 1.2; text-align: center; opacity: 0.9; }
+  .book-bottom { position: absolute; right: 7px; bottom: 7px; left: 7px; height: 1px; background: rgb(255 255 255 / 35%); }
+  .shelf-board { height: 12px; margin: -1px 0 0; border: 1px solid rgb(255 255 255 / 10%); border-radius: 3px; background: linear-gradient(180deg, #34313a, #1b1a20); box-shadow: 0 12px 22px rgb(0 0 0 / 28%); }
+  @media (max-width: 520px) {
+    .book-row { min-height: 190px; padding-inline: 0.25rem; gap: 0; }
+    .book-slot { margin-left: var(--mobile-support-shift); margin-right: var(--mobile-support-gap); transform: translateY(calc(0px - var(--mobile-shelf-lift))) rotate(var(--book-rotation)); }
+    .book { width: 34px; height: 170px; padding-inline: 0.2rem; }
+    .book-title { top: 42%; width: 106px; font-size: 0.72rem; }
+    .book-author { bottom: 1rem; font-size: 0.40rem; line-height: 1.15; }
+  }
+  @media (prefers-reduced-motion: reduce) { .book-slot, .book { transition: none; } }
+</style>

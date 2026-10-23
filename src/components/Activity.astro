@@ -1,0 +1,484 @@
+---
+// Activity component – renders GitHub and LeetCode activity heatmaps matching the portfolio's purple theme and typography
+const oneDay = 24 * 60 * 60 * 1000;
+const now = new Date();
+const endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+const endDayOfWeek = endDate.getDay(); // 0 = Sun
+const startDate = new Date(endDate.getTime() - (52 * 7 + endDayOfWeek) * oneDay);
+
+const startMonthName = startDate.toLocaleString('en-US', { month: 'short' });
+const startYear = startDate.getFullYear();
+const endMonthName = endDate.toLocaleString('en-US', { month: 'short' });
+const endYear = endDate.getFullYear();
+const dateRangeStr = `${startMonthName} ${startYear} — ${endMonthName} ${endYear}`;
+
+// Helper to format date cleanly as "May 14, 2026"
+function formatDisplayDate(dateStr: string) {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dateObj = new Date(y, m - 1, d);
+  return dateObj.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+// Color palette matching the portfolio theme (--sec: #a476ff)
+const colorMap: Record<number, string> = {
+  0: '#18181d', // Inactive dark charcoal
+  1: '#342252', // Level 1 deep dark purple
+  2: '#58378f', // Level 2 medium purple
+  3: '#8253db', // Level 3 rich bright purple
+  4: '#a476ff', // Level 4 signature --sec electric purple
+};
+
+// 1. Fetch LeetCode Data
+let lcSolved = 745;
+let lcActiveDays = 157;
+let lcDayMap: Record<string, { count: number; level: number }> = {};
+
+try {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const res = await fetch("https://leetcode.com/graphql", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "User-Agent": "Mozilla/5.0",
+    },
+    body: JSON.stringify({
+      query: `query getUserProfile($username: String!) { matchedUser(username: $username) { submissionCalendar submitStats: submitStatsGlobal { acSubmissionNum { count } } } }`,
+      variables: { username: "chan_2k5" },
+    }),
+    signal: controller.signal,
+  });
+  clearTimeout(timeoutId);
+  const data = await res.json();
+  const calendar = JSON.parse(data?.data?.matchedUser?.submissionCalendar || "{}");
+  lcSolved = data?.data?.matchedUser?.submitStats?.acSubmissionNum?.[0]?.count || 745;
+  lcActiveDays = Object.keys(calendar).length;
+
+  for (const [timestamp, countVal] of Object.entries(calendar)) {
+    const count = Number(countVal);
+    const d = new Date(parseInt(timestamp, 10) * 1000);
+    const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    let level = 1;
+    if (count >= 6) level = 4;
+    else if (count >= 3) level = 3;
+    else if (count >= 2) level = 2;
+    lcDayMap[ds] = { count, level };
+  }
+} catch {
+  // Graceful fallback if network is slow or offline
+}
+
+// 2. Fetch GitHub Data
+let ghContributions = 51;
+let ghActiveDays = 15;
+let ghDayMap: Record<string, { count: number; level: number }> = {};
+
+try {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const res = await fetch('https://github-contributions-api.jogruber.de/v4/Chandhru2k5?y=last', {
+    signal: controller.signal,
+  });
+  clearTimeout(timeoutId);
+  const data = await res.json();
+  ghContributions = data?.total?.lastYear || 51;
+  const contributions = data?.contributions || [];
+  ghActiveDays = contributions.filter((c: any) => c.count > 0).length;
+
+  for (const c of contributions) {
+    ghDayMap[c.date] = { count: c.count, level: c.level };
+  }
+} catch {
+  // Graceful fallback if network is slow or offline
+}
+
+// Build 53-week grid
+interface DayItem {
+  date: string;
+  formattedDate: string;
+  count: number;
+  level: number;
+  isFuture: boolean;
+}
+
+interface MonthLabel {
+  label: string;
+  colIndex: number;
+}
+
+function buildWeeks(dayMap: Record<string, { count: number; level: number }>) {
+  const weeks: DayItem[][] = [];
+  let currentWeek: DayItem[] = [];
+  const monthLabels: MonthLabel[] = [];
+  let lastMonth = -1;
+  let colIdx = 0;
+
+  let cur = new Date(startDate);
+  while (cur <= endDate) {
+    const y = cur.getFullYear();
+    const m = cur.getMonth();
+    const d = cur.getDate();
+    const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+    if (m !== lastMonth && currentWeek.length === 0) {
+      monthLabels.push({
+        label: cur.toLocaleString('en-US', { month: 'short' }),
+        colIndex: colIdx,
+      });
+      lastMonth = m;
+    }
+
+    const info = dayMap[ds] || { count: 0, level: 0 };
+    currentWeek.push({
+      date: ds,
+      formattedDate: formatDisplayDate(ds),
+      count: info.count,
+      level: info.level,
+      isFuture: cur > now,
+    });
+
+    if (currentWeek.length === 7) {
+      weeks.push(currentWeek);
+      currentWeek = [];
+      colIdx++;
+    }
+    cur = new Date(cur.getTime() + oneDay);
+  }
+
+  if (currentWeek.length > 0) {
+    while (currentWeek.length < 7) {
+      currentWeek.push({ date: '', formattedDate: '', count: 0, level: 0, isFuture: true });
+    }
+    weeks.push(currentWeek);
+  }
+
+  return { weeks, monthLabels };
+}
+
+const lcGrid = buildWeeks(lcDayMap);
+const ghGrid = buildWeeks(ghDayMap);
+---
+
+<section id="activity" class="w-full py-16 border-t border-[#ffffff10] text-[var(--white)] relative">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6">
+    <!-- Top Header matching About, Projects & Contact styling -->
+    <div class="flex flex-col sm:flex-row sm:items-end justify-between pb-6 border-b border-[#ffffff10] gap-3">
+      <div>
+        <h2 class="text-lg text-[var(--sec)] mb-1 shiny-sec">Coding Journey</h2>
+        <h3 class="text-4xl md:text-5xl font-medium text-[var(--white)] tracking-tight">Activity</h3>
+      </div>
+      <span class="text-xs md:text-sm text-[var(--white-icon)]">{dateRangeStr}</span>
+    </div>
+
+    <!-- LeetCode Section -->
+    <div class="pt-8 pb-10 border-b border-[#ffffff10]">
+      <!-- Header row: title on left, stats aligned with date range on right -->
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-5 gap-3 w-full">
+        <div>
+          <a
+            href="https://leetcode.com/u/chan_2k5/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group inline-flex items-center gap-2.5 hover:opacity-90 transition-opacity"
+          >
+            <img
+              src={`${import.meta.env.BASE_URL}svg/leetcode.svg`}
+              alt="LeetCode"
+              class="w-6 h-6 object-contain group-hover:scale-110 transition-transform"
+              width="24"
+              height="24"
+            />
+            <h4 class="text-2xl font-bold text-white tracking-tight group-hover:text-[var(--sec)] transition-colors">
+              LeetCode
+            </h4>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              class="w-4 h-4 text-zinc-500 group-hover:text-[var(--sec)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </a>
+          <p class="text-sm font-medium text-[var(--sec)] mt-0.5">Daily problem solving</p>
+        </div>
+
+        <div class="text-left sm:text-right">
+          <p class="text-xs text-[var(--white-icon)]">{lcActiveDays} active days</p>
+          <p class="text-3xl md:text-4xl font-bold text-[var(--sec)] leading-none my-1 tracking-tight">
+            {lcSolved}
+          </p>
+          <p class="text-xs text-[var(--white-icon)]">problems solved</p>
+        </div>
+      </div>
+
+      <!-- LeetCode Heatmap Grid (Centered) -->
+      <div class="w-full flex justify-center">
+        <div class="heatmap-scroll max-w-[740px] w-full overflow-x-auto pb-2">
+          <svg
+            viewBox="0 0 695 112"
+            class="w-full min-w-[620px] h-auto select-none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <!-- Month Labels -->
+            {
+              lcGrid.monthLabels.map((m) => (
+                <text
+                  x={m.colIndex * 13}
+                  y="11"
+                  fill="#71717a"
+                  font-size="9.5"
+                  font-weight="500"
+                  font-family="'Montserrat Variable', system-ui, sans-serif"
+                >
+                  {m.label}
+                </text>
+              ))
+            }
+
+            <!-- Grid Rectangles -->
+            {
+              lcGrid.weeks.map((week, colIdx) =>
+                week.map((day, rowIdx) => {
+                  const x = colIdx * 13;
+                  const y = 18 + rowIdx * 13;
+                  const fill = day.isFuture ? '#121216' : (colorMap[day.level] || '#18181d');
+                  const tooltipContent = day.isFuture
+                    ? ''
+                    : `${day.count} problem${day.count === 1 ? '' : 's'} solved on ${day.formattedDate}`;
+                  return (
+                    <rect
+                      x={x}
+                      y={y}
+                      width="10"
+                      height="10"
+                      rx="2"
+                      ry="2"
+                      fill={fill}
+                      class="activity-cell"
+                      aria-label={tooltipContent}
+                    />
+                  );
+                })
+              )
+            }
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- GitHub Section -->
+    <div class="pt-8 pb-10">
+      <!-- Header row: title on left, stats aligned with date range on right -->
+      <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-5 gap-3 w-full">
+        <div>
+          <a
+            href="https://github.com/Chandhru2k5"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group inline-flex items-center gap-2.5 hover:opacity-90 transition-opacity"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              class="w-6 h-6 text-white group-hover:text-[var(--sec)] group-hover:scale-110 transition-all"
+              fill="currentColor"
+            >
+              <path
+                d="M12.001 2C6.476 2 2 6.475 2 12c0 4.425 2.863 8.163 6.838 9.488.5.088.688-.213.688-.475 0-.238-.013-1.025-.013-1.863-2.512.463-3.162-.612-3.362-1.175-.113-.288-.6-1.175-1.025-1.413-.35-.187-.85-.65-.013-.662.788-.013 1.35.725 1.538 1.025.9 1.512 2.338 1.087 2.912.825.088-.65.35-1.087.638-1.337-2.225-.25-4.55-1.113-4.55-4.938 0-1.088.388-1.988 1.025-2.688-.1-.25-.45-1.275.1-2.65 0 0 .838-.262 2.75 1.025.8-.225 1.65-.337 2.5-.337.85 0 1.7.112 2.5.337 1.912-1.3 2.75-1.025 2.75-1.025.55 1.375.2 2.4.1 2.65.637.7 1.025 1.588 1.025 2.688 0 3.838-2.337 4.688-4.562 4.938.362.312.675.912.675 1.85 0 1.337-.012 2.412-.012 2.75 0 .262.187.575.687.475C19.137 20.163 22 16.425 22 12c0-5.525-4.475-10-10-10z"
+              />
+            </svg>
+            <h4 class="text-2xl font-bold text-white tracking-tight group-hover:text-[var(--sec)] transition-colors">
+              GitHub
+            </h4>
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              class="w-4 h-4 text-zinc-500 group-hover:text-[var(--sec)] group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all"
+            >
+              <path
+                fill-rule="evenodd"
+                d="M5.22 14.78a.75.75 0 001.06 0l7.22-7.22v5.69a.75.75 0 001.5 0v-7.5a.75.75 0 00-.75-.75h-7.5a.75.75 0 000 1.5h5.69l-7.22 7.22a.75.75 0 000 1.06z"
+                clip-rule="evenodd"
+              />
+            </svg>
+          </a>
+          <p class="text-sm font-medium text-[var(--sec)] mt-0.5">Commits, reviews and issues</p>
+        </div>
+
+        <div class="text-left sm:text-right">
+          <p class="text-xs text-[var(--white-icon)]">{ghActiveDays} active days</p>
+          <p class="text-3xl md:text-4xl font-bold text-[var(--sec)] leading-none my-1 tracking-tight">
+            {ghContributions}
+          </p>
+          <p class="text-xs text-[var(--white-icon)]">contributions</p>
+        </div>
+      </div>
+
+      <!-- GitHub Heatmap Grid (Centered) -->
+      <div class="w-full flex justify-center">
+        <div class="heatmap-scroll max-w-[740px] w-full overflow-x-auto pb-2">
+          <svg
+            viewBox="0 0 695 112"
+            class="w-full min-w-[620px] h-auto select-none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <!-- Month Labels -->
+            {
+              ghGrid.monthLabels.map((m) => (
+                <text
+                  x={m.colIndex * 13}
+                  y="11"
+                  fill="#71717a"
+                  font-size="9.5"
+                  font-weight="500"
+                  font-family="'Montserrat Variable', system-ui, sans-serif"
+                >
+                  {m.label}
+                </text>
+              ))
+            }
+
+            <!-- Grid Rectangles -->
+            {
+              ghGrid.weeks.map((week, colIdx) =>
+                week.map((day, rowIdx) => {
+                  const x = colIdx * 13;
+                  const y = 18 + rowIdx * 13;
+                  const fill = day.isFuture ? '#121216' : (colorMap[day.level] || '#18181d');
+                  const tooltipContent = day.isFuture
+                    ? ''
+                    : `${day.count} contribution${day.count === 1 ? '' : 's'} on ${day.formattedDate}`;
+                  return (
+                    <rect
+                      x={x}
+                      y={y}
+                      width="10"
+                      height="10"
+                      rx="2"
+                      ry="2"
+                      fill={fill}
+                      class="activity-cell"
+                      aria-label={tooltipContent}
+                    />
+                  );
+                })
+              )
+            }
+          </svg>
+        </div>
+      </div>
+
+      <!-- Legend in portfolio purple palette, aligned with the centered heatmap -->
+      <div class="w-full flex justify-center mt-5">
+        <div class="max-w-[740px] w-full flex items-center gap-2 text-xs text-[var(--white-icon)]">
+          <span>less</span>
+          <div class="flex items-center gap-1">
+            <span class="w-[10px] h-[10px] rounded-[2px] inline-block bg-[#18181d] border border-white/5"></span>
+            <span class="w-[10px] h-[10px] rounded-[2px] inline-block bg-[#342252]"></span>
+            <span class="w-[10px] h-[10px] rounded-[2px] inline-block bg-[#58378f]"></span>
+            <span class="w-[10px] h-[10px] rounded-[2px] inline-block bg-[#8253db]"></span>
+            <span class="w-[10px] h-[10px] rounded-[2px] inline-block bg-[#a476ff]"></span>
+          </div>
+          <span>more</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    id="activity-tooltip"
+    role="tooltip"
+    class="pointer-events-none fixed z-[999] max-w-[calc(100vw-1.5rem)] whitespace-nowrap rounded-lg border border-[var(--sec)]/40 bg-[#141419]/95 px-3 py-1.5 text-xs font-medium text-[var(--white)] shadow-xl shadow-[#a476ff20] backdrop-blur-md opacity-0 transition-opacity duration-150"
+    style="left: 0; top: 0; transform: translate(-50%, -100%);"
+  ></div>
+</section>
+
+<script>
+  const activitySection = document.getElementById("activity");
+  const activityTooltip = document.getElementById("activity-tooltip");
+
+  if (activitySection && activityTooltip) {
+    const hideTooltip = () => {
+      activityTooltip.style.opacity = "0";
+    };
+
+    activitySection.addEventListener("pointerover", (event) => {
+      const target = (event.target as Element).closest<SVGRectElement>(".activity-cell");
+      const label = target?.getAttribute("aria-label");
+      if (!label) {
+        hideTooltip();
+        return;
+      }
+
+      activityTooltip.textContent = label;
+      activityTooltip.style.opacity = "1";
+    });
+
+    activitySection.addEventListener("pointermove", (event) => {
+      const target = (event.target as Element).closest(".activity-cell");
+      if (!target?.getAttribute("aria-label")) return;
+
+      const halfWidth = activityTooltip.getBoundingClientRect().width / 2;
+      const x = Math.min(Math.max(event.clientX, halfWidth + 12), window.innerWidth - halfWidth - 12);
+      const isNearTop = event.clientY < 56;
+      activityTooltip.style.left = `${x}px`;
+      activityTooltip.style.top = `${isNearTop ? event.clientY + 12 : event.clientY - 10}px`;
+      activityTooltip.style.transform = isNearTop
+        ? "translate(-50%, 0)"
+        : "translate(-50%, -100%)";
+    });
+
+    activitySection.addEventListener("pointerout", (event) => {
+      const target = event.target as Element;
+      const related = event.relatedTarget as Element | null;
+      if (target.closest(".activity-cell") && !related?.closest(".activity-cell")) {
+        hideTooltip();
+      }
+    });
+
+    window.addEventListener("scroll", hideTooltip, { passive: true });
+  }
+</script>
+
+<style>
+  .heatmap-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sec) var(--background);
+  }
+
+  .heatmap-scroll::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  .heatmap-scroll::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .heatmap-scroll::-webkit-scrollbar-track {
+    background: var(--background);
+    border-radius: 999px;
+  }
+
+  .heatmap-scroll::-webkit-scrollbar-thumb {
+    background: var(--sec);
+    border: 1px solid var(--background);
+    border-radius: 999px;
+  }
+
+  .heatmap-scroll::-webkit-scrollbar-thumb:hover {
+    background: #c2a6ff;
+  }
+</style>
